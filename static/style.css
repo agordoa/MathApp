@@ -1,0 +1,126 @@
+/* Reset and Base Layout */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f5f7fa;
+  color: #333;
+  max-width: 800px;
+  margin: 40px auto;
+  padding: 0 20px;
+  line-height: 1.6;
+}
+
+/* Header */
+h1, h2 {
+  color: #2c3e50;
+  margin-bottom: 20px;
+}
+
+/* Links */
+a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Forms */
+form {
+  margin-top: 20px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+
+input[type="text"],
+input[type="password"],
+select {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1em;
+}
+
+input[type="submit"],
+button {
+  padding: 10px 16px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1em;
+  cursor: pointer;
+}
+
+input[type="submit"]:hover,
+button:hover {
+  background-color: #218838;
+}
+
+/* Feedback */
+.feedback {
+  margin-top: 20px;
+  font-weight: bold;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.correct {
+  color: green;
+}
+
+.incorrect {
+  color: red;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 30px;
+}
+
+th, td {
+  text-align: left;
+  padding: 12px;
+  border: 1px solid #ccc;
+}
+
+th {
+  background-color: #f0f0f0;
+}
+
+/* Dashboard Extras */
+.next-button {
+  margin-top: 15px;
+}
+
+/* Topic Summary Cards */
+.summary-card {
+  background-color: #e9f5ff;
+  border-left: 5px solid #007bff;
+  padding: 10px 15px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+}
+
+/* Chart Container */
+.chart-container {
+  margin-top: 30px;
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}

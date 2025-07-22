@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>{{ user }}'s Progress</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+    }
+
+    h2, h3 {
+      color: #333;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      padding: 10px;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+
+    .correct { color: green; }
+    .incorrect { color: red; }
+
+    .summary-section {
+      margin-top: 30px;
+    }
+
+    .chart-container {
+      width: 100%;
+      margin-top: 20px;
+    }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <h2>{{ user }}'s Progress History</h2>
+  <p><a href="/dashboard">← Back to Dashboard</a></p>
+
+  <!-- Average Difficulty -->
+  <div class="summary-section">
+    <h3>📊 Summary</h3>
+    <p><strong>Average Difficulty:</strong> {{ avg_difficulty }}</p>
+  </div>
+
+  <!-- Accuracy by Topic -->
+  <div class="summary-section">
+    <h3>✅ Accuracy by Topic</h3>
+    <ul>
+      {% for row in topic_summary %}
+        <li><strong>{{ row.topic }}</strong>: {{ row.accuracy }}% ({{ row.correct }}/{{ row.total }})</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Accuracy Over Time Chart -->
+  <div class="summary-section">
+    <h3>📈 Accuracy Over Time</h3>
+    <div class="chart-container">
+      <canvas id="accuracyChart" width="800" height="300"></canvas>
+    </div>
+    <script>
+      const ctx = document.getElementById('accuracyChart').getContext('2d');
+      const chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+              labels: {{ accuracy_over_time | map(attribute='date') | list | tojson }},
+              datasets: [{
+                  label: 'Correct Answers',
+                  data: {{ accuracy_over_time | map(attribute='correct') | list | tojson }},
+                  backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                  borderColor: 'rgba(54, 162, 235, 1)',
+                  fill: false,
+                  tension: 0.3
+              }]
+          },
+          options: {
+              scales: {
+                  y: {
+                      beginAtZero: true,
+                      title: { display: true, text: "Correct Answers" }
+                  },
+                  x: {
+                      title: { display: true, text: "Date" }
+                  }
+              }
+          }
+      });
+    </script>
+  </div>
+
+  <!-- Full History Table -->
+  <div class="summary-section">
+    <h3>📚 Full Answer History</h3>
+    {% if history %}
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Topic</th>
+            <th>Difficulty</th>
+            <th>Question</th>
+            <th>Your Answer</th>
+            <th>Correct Answer</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in history %}
+            <tr>
+              <td>{{ row.timestamp }}</td>
+              <td>{{ row.topic }}</td>
+              <td>{{ row.difficulty }}</td>
+              <td>{{ row.question }}</td>
+              <td>{{ row.user_answer }}</td>
+              <td>{{ row.correct_answer }}</td>
+              <td class="{{ 'correct' if row.is_correct else 'incorrect' }}">
+                {{ '✅' if row.is_correct else '❌' }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No answers submitted yet.</p>
+    {% endif %}
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Welcome to MathTutor!</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    a.button {
+      background: #007BFF;
+      color: white;
+      padding: 10px 20px;
+      text-decoration: none;
+      border-radius: 5px;
+      margin: 10px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <h1>Welcome to MathTutor! </h1>
+  <p>This web app helps students practice math problems, track progress, and learn better through AI.</p>
+
+  {% if 'username' in session %}
+    <p>Hello, {{ session['username'] }}! Go to your <a href="/dashboard" class="button">Dashboard</a>.</p>
+    <a href="/logout" class="button">Logout</a>
+  {% else %}
+    <a href="/login" class="button">Login</a>
+    <a href="/register" class="button">Register</a>
+  {% endif %}
+</body>
+</html>

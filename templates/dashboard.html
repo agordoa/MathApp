@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Math Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+    }
+
+    input[type="text"], input[type="submit"] {
+      margin-top: 8px;
+      padding: 6px;
+      font-size: 1em;
+    }
+
+    .feedback {
+      margin-top: 20px;
+      font-weight: bold;
+    }
+
+    .next-button {
+      margin-top: 10px;
+    }
+  </style>
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async
+        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+  </script>
+
+</head>
+<body>
+
+<h2>Welcome, {{ user }}!</h2>
+
+<p>
+  <a href="/"> Return Home</a>
+</p>
+<p>
+  <strong>Difficulty:</strong> {{ difficulty | capitalize }}<br>
+  ✅ Streak: {{ correct_streak or 0 }} &nbsp;&nbsp; | &nbsp;&nbsp; ❌ Streak: {{ wrong_streak or 0 }}
+</p>
+
+{% if not question %}
+<form method="post">
+  <label for="topic">Choose a math topic:</label><br>
+  <select name="topic" required>
+    <option value="">-- Select a topic --</option>
+    <option value="arithmetic">Arithmetic</option>
+    <option value="algebra">Algebra</option>
+    <option value="calculus">Calculus</option>
+  </select><br>
+  <input type="submit" value="Start Practice">
+</form>
+{% endif %}
+
+{% if question %}
+  <p><strong>Problem:</strong></p>
+  <p> {{ question|safe }} </p>
+
+  <!-- Hint Button Form -->
+  <form method="post" style="margin-bottom: 10px;">
+    <input type="hidden" name="get_hint" value="true">
+    <input type="hidden" name="question" value="{{ question | e }}">
+    <input type="hidden" name="expression" value="{{ expression | e }}">
+    <input type="hidden" name="correct_answer" value="{{ correct_answer | e }}">
+    <input type="submit" value="Show Hint 💡">
+  </form>
+
+  <!-- Hint Display -->
+  {% if hint %}
+    <p><strong>Hint:</strong> {{ hint }}</p>
+  {% endif %}
+
+  <form method="post">
+    <input type="hidden" name="question" value="{{ question | e }}">
+    <input type="hidden" name="expression" value="{{ expression | e }}">
+    <input type="hidden" name="correct_answer" value="{{ correct_answer | e }}"> 
+    <input type="text" name="answer" placeholder="Your answer"><br>
+    <input type="submit" value="Submit">
+  </form>
+
+{% if feedback %}
+  <p class="feedback">
+    <strong>Feedback:</strong> {{ feedback }}<br>
+    {% if "❌" in feedback and correct_answer %}
+      Correct Answer: {{ correct_answer }}
+    {% endif %}
+  </p>
+
+  {% if "❌" in feedback and correct_answer %}
+    <!-- Override Button -->
+    <form method="post" style="margin-top: 10px;">
+      <input type="hidden" name="override" value="true">
+      <input type="hidden" name="question" value="{{ question | e }}">
+      <input type="hidden" name="expression" value="{{ expression | e }}">
+      <input type="hidden" name="user_answer" value="{{ user_answer | e }}">
+      <input type="hidden" name="correct_answer" value="{{ correct_answer | e }}">
+      <input type="submit" value="Override as Correct ✅">
+    </form>
+  {% endif %}
+{% endif %}
+
+  <!-- New Question Button -->
+  <form method="post" class="next-button">
+    <input type="hidden" name="new_question" value="true">
+    <input type="hidden" name="topic" value="{{ session['topic'] }}">
+    <input type="submit" value="New Question">
+  </form>
+{% endif %}
+
+<!-- History link -->
+<p>
+  <a href="/history"> View My Progress</a>
+</p>
+
+</body>
+</html>
