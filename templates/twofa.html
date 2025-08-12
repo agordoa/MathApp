@@ -1,0 +1,15 @@
+<!-- templates/twofa.html -->
+<!doctype html>
+<html>
+  <head><title>Two-Factor Authentication</title></head>
+  <body>
+    <h2>Enter the 2FA code</h2>
+    <form method="post" action="/2fa/verify">
+      <input name="code" placeholder="123456" required />
+      <button type="submit">Verify</button>
+    </form>
+    <form method="post" action="/2fa/resend" style="margin-top:1rem;">
+      <button type="submit">Resend code</button>
+    </form>
+  </body>
+</html>

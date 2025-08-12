@@ -5,7 +5,8 @@
 from flask import Flask, render_template, request, redirect, session
 from openai import OpenAI
 import pymysql, wolframalpha, pymysql.cursors, os
-
+from twilio.rest import Client
+from datetime import datetime, timedelta
 # -----------------------------
 # 2. Set API keys
 # -----------------------------
@@ -18,6 +19,13 @@ client = OpenAI(api_key=os.getenv("openai_key"))
 # -----------------------------
 app = Flask(__name__)
 app.secret_key = os.getenv("app_secret_key")
+
+# -----------------------------
+# 3.5 Create the twilio client for app
+# ----------------------------- 
+twilio_client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+VERIFY_SID = os.getenv("TWILIO_VERIFY_SERVICE_SID")
+RESEND_COOLDOWN = 30 
 
 # -----------------------------
 # 4. HELPER FUNCTIONS
@@ -121,16 +129,13 @@ def clean_expression(expr):
 
 def generate_hint(question, expression):
     prompt = (
-        f"You're a helpful math tutor. Give a hint (not the answer) "
+        "You're a helpful math tutor. Give a hint (not the answer) "
         f"to help a student solve this math question:\n"
-        f"Question: {question}\n"
-        f"Expression: {expression}\n"
-        f"Hint:"
+        f"Question: {question}\nExpression: {expression}\nHint:"
     )
-    
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",  # or your preferred model
             messages=[
                 {"role": "system", "content": "You are a helpful math tutor."},
                 {"role": "user", "content": prompt}
@@ -138,12 +143,11 @@ def generate_hint(question, expression):
             max_tokens=60,
             temperature=0.5,
         )
-
-        return response['choices'][0]['message']['content'].strip()
+        return resp.choices[0].message.content.strip()
     except Exception as e:
         print("Error generating hint:", e)
         return "Hint generation failed. Try simplifying the problem."
-
+    
 # -----------------------------
 # 5. Database Setup
 # -----------------------------
@@ -162,12 +166,16 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Create users table
+    # Create users table with 2FA fields
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
             username VARCHAR(100) UNIQUE NOT NULL,
-            password VARCHAR(100) NOT NULL
+            password VARCHAR(100) NOT NULL,
+            phone_e164 VARCHAR(20),
+            is_phone_verified BOOLEAN DEFAULT 0,
+            twofa_enabled BOOLEAN DEFAULT 0,
+            twofa_channel ENUM('sms','voice','whatsapp','email') DEFAULT 'sms'
         );
     """)
 
@@ -214,16 +222,20 @@ def register():
     if request.method == 'POST':
         user = request.form['username']
         pw = request.form['password']
+        phone = request.form.get('phone_e164')  # e.g. +14155551212
         conn = get_db_connection()
         c = conn.cursor()
         try:
-            c.execute('INSERT INTO users (username, password) VALUES (%s, %s)', (user, pw))
+            c.execute(
+                'INSERT INTO users (username, password, phone_e164, is_phone_verified, twofa_enabled, twofa_channel) '
+                'VALUES (%s, %s, %s, %s, %s, %s)',
+                (user, pw, phone, False, False, 'sms')
+            )
             conn.commit()
         except:
             return "Username already exists"
         finally:
-            c.close()
-            conn.close()
+            c.close(); conn.close()
         return redirect('/login')
     return render_template('register.html')
 
@@ -236,13 +248,85 @@ def login():
         c = conn.cursor()
         c.execute('SELECT * FROM users WHERE username = %s AND password = %s', (user, pw))
         result = c.fetchone()
-        c.close()
-        conn.close()
-        if result:
-            session['username'] = user
+        c.close(); conn.close()
+
+        if not result:
+            return "Invalid credentials"
+
+        # Password is correct — check whether 2FA is enabled for this user
+        if result.get('twofa_enabled') and result.get('phone_e164'):
+            # throttle resends via session timestamp
+            last = session.get('last_2fa_sent_at')
+            if not last or (datetime.utcnow() - datetime.fromisoformat(last)).total_seconds() >= RESEND_COOLDOWN:
+                to = result['phone_e164']
+                channel = result.get('twofa_channel') or 'sms'
+                if channel == 'whatsapp':
+                    to = f'whatsapp:{to}'
+                twilio_client.verify.v2.services(VERIFY_SID).verifications.create(to=to, channel=channel)
+                session['last_2fa_sent_at'] = datetime.utcnow().isoformat()
+
+            # mark 2FA pending; store username until code is approved
+            session['pending_2fa_user'] = result['username']
+            return render_template('twofa.html', username=result['username'])
+        else:
+            # No 2FA — log in fully
+            session['username'] = result['username']
             return redirect('/dashboard')
-        return "Invalid credentials"
+
     return render_template('login.html')
+
+@app.post('/2fa/resend')
+def twofa_resend():
+    if 'pending_2fa_user' not in session:
+        return "No 2FA in progress", 400
+
+    # fetch user & phone
+    conn = get_db_connection(); c = conn.cursor()
+    c.execute('SELECT phone_e164, twofa_channel FROM users WHERE username = %s', (session['pending_2fa_user'],))
+    u = c.fetchone(); c.close(); conn.close()
+    if not u or not u.get('phone_e164'):
+        return "No phone on file", 400
+
+    last = session.get('last_2fa_sent_at')
+    if last and (datetime.utcnow() - datetime.fromisoformat(last)).total_seconds() < RESEND_COOLDOWN:
+        return "Please wait before requesting another code.", 429
+
+    to = u['phone_e164']
+    channel = u.get('twofa_channel') or 'sms'
+    if channel == 'whatsapp':
+        to = f'whatsapp:{to}'
+    twilio_client.verify.v2.services(VERIFY_SID).verifications.create(to=to, channel=channel)
+    session['last_2fa_sent_at'] = datetime.utcnow().isoformat()
+    return "sent", 200
+
+
+@app.post('/2fa/verify')
+def twofa_verify():
+    if 'pending_2fa_user' not in session:
+        return "No 2FA in progress", 400
+
+    code = request.form.get('code') or (request.json or {}).get('code')
+    if not code:
+        return "Missing code", 400
+
+    # fetch phone for pending user
+    conn = get_db_connection(); c = conn.cursor()
+    c.execute('SELECT phone_e164, twofa_channel FROM users WHERE username = %s', (session['pending_2fa_user'],))
+    u = c.fetchone(); c.close(); conn.close()
+    if not u or not u.get('phone_e164'):
+        return "No phone on file", 400
+
+    to = u['phone_e164']
+    if (u.get('twofa_channel') or 'sms') == 'whatsapp':
+        to = f'whatsapp:{to}'
+
+    check = twilio_client.verify.v2.services(VERIFY_SID).verification_checks.create(to=to, code=code)
+    if check.status == 'approved':
+        # finish login
+        session['username'] = session['pending_2fa_user']
+        session.pop('pending_2fa_user', None)
+        return redirect('/dashboard')
+    return "Invalid or expired code", 401
 
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
@@ -499,5 +583,8 @@ def history():
 
 @app.route('/logout')
 def logout():
-    session.clear()
+    session_keys = ['username', 'pending_2fa_user', 'last_2fa_sent_at', 'hint_used',
+                    'difficulty', 'correct_streak', 'wrong_streak', 'topic']
+    for k in session_keys:
+        session.pop(k, None)
     return redirect('/')
