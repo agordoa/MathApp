@@ -1,15 +1,45 @@
-<!-- templates/twofa.html -->
 <!doctype html>
-<html>
-  <head><title>Two-Factor Authentication</title></head>
-  <body>
-    <h2>Enter the 2FA code</h2>
-    <form method="post" action="/2fa/verify">
-      <input name="code" placeholder="123456" required />
-      <button type="submit">Verify</button>
-    </form>
-    <form method="post" action="/2fa/resend" style="margin-top:1rem;">
-      <button type="submit">Resend code</button>
-    </form>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Two-Factor Authentication</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+
+  <h2>Enter your 2FA code</h2>
+  <p>We sent a 6-digit code to your phone for account security.</p>
+
+  <form method="post" action="/2fa/verify">
+    <label for="code">Code</label>
+    <input id="code" name="code" inputmode="numeric" pattern="\d{4,8}" placeholder="123456" required>
+    <input type="submit" value="Verify">
+  </form>
+
+  <form method="post" action="/2fa/resend" id="resendForm">
+    <button type="submit" id="resendBtn">Resend code</button>
+    <span id="countdown" style="margin-left:8px;"></span>
+  </form>
+
+  <script>
+    const COOLDOWN = 30;
+    const btn = document.getElementById('resendBtn');
+    const cd  = document.getElementById('countdown');
+
+    function startCooldown(s) {
+      btn.disabled = true;
+      let t = s;
+      cd.textContent = `Wait ${t}s`;
+      const iv = setInterval(() => {
+        t--;
+        cd.textContent = t > 0 ? `Wait ${t}s` : '';
+        if (t <= 0) { clearInterval(iv); btn.disabled = false; }
+      }, 1000);
+    }
+
+    startCooldown(COOLDOWN);
+    document.getElementById('resendForm').addEventListener('submit', () => startCooldown(COOLDOWN));
+  </script>
+</body>
 </html>
