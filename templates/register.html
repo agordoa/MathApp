@@ -1,20 +1,77 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <title>Login</title>
+  <meta charset="utf-8" />
+  <title>Register</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
 
   <h2>Register</h2>
-  <form method="post">
-    Username: <input name="username" type="text"><br>
-    Password: <input name="password" type="password"><br>
+
+  <!-- flash messages -->
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+      <ul class="messages">
+        {% for cat, m in msgs %}
+          <li class="{{ cat }}">{{ m }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" action="/register" id="regForm" novalidate>
+    Username:
+    <input name="username" type="text" required value="{{ request.form.get('username','') }}"><br>
+
+    Password:
+    <input name="password" type="password" required minlength="6"><br>
+
+    <fieldset style="margin-top:1rem;">
+      <legend>Two-Factor (optional)</legend>
+      <label>
+        <input type="checkbox" name="enable_2fa_now" id="enable2fa"
+               {% if request.form.get('enable_2fa_now') %}checked{% endif %}>
+        Enable 2FA now
+      </label><br>
+
+      <div id="twofaFields" style="display:none; margin-top:.5rem;">
+        Phone (E.164):
+        <input
+          name="phone_e164"
+          id="phone"
+          type="tel"
+          inputmode="tel"
+          placeholder="+14155551212"
+          pattern="\+[1-9]\d{7,14}"
+          value="{{ request.form.get('phone_e164','') }}"
+        ><br>
+
+        Channel:
+        <select name="twofa_channel" id="channel">
+          <option value="sms" {% if request.form.get('twofa_channel','sms')=='sms' %}selected{% endif %}>SMS</option>
+          <option value="voice" {% if request.form.get('twofa_channel')=='voice' %}selected{% endif %}>Voice</option>
+          <option value="whatsapp" {% if request.form.get('twofa_channel')=='whatsapp' %}selected{% endif %}>WhatsApp</option>
+        </select>
+      </div>
+    </fieldset>
+
     <input type="submit" value="Register">
   </form>
 
-  <p>
-    <a href="/login">Already have an account?</a>
-  </p>
+  <script>
+    const cb = document.getElementById('enable2fa');
+    const box = document.getElementById('twofaFields');
+    const phone = document.getElementById('phone');
+    cb.addEventListener('change', () => {
+      const on = cb.checked;
+      box.style.display = on ? 'block' : 'none';
+      phone.required = on; // only require phone if enabling now
+    });
+    // initialize on load (in case the form was resubmitted)
+    cb.dispatchEvent(new Event('change'));
+  </script>
+
 </body>
 </html>

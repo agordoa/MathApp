@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Finish 2FA Setup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 3rem auto; padding: 0 1rem; }
+    .row { margin: .5rem 0; }
+    .muted { color: #666; font-size: .95rem; }
+    button[disabled] { opacity: .6; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <h2>Verify your phone</h2>
+  <p class="muted">We sent a 6-digit code to your phone. Enter it below to finish enabling 2FA.</p>
+
+  <!-- code entry -->
+  <form method="post" action="/register/2fa/verify">
+    <div class="row">
+      <label for="code">Code</label><br>
+      <input id="code" name="code" inputmode="numeric" pattern="\d{4,8}" placeholder="123456" required>
+    </div>
+    <button type="submit">Verify</button>
+  </form>
+
+  <!-- resend -->
+  <form method="post" action="/register/2fa/resend" id="resendForm" class="row" style="margin-top:1rem;">
+    <button type="submit" id="resendBtn">Resend code</button>
+    <span id="countdown" class="muted" style="margin-left:.5rem;"></span>
+  </form>
+
+  <script>
+    // Simple client-side cooldown to match your RESEND_COOLDOWN = 30
+    const COOLDOWN = 30;
+    const btn = document.getElementById('resendBtn');
+    const cd  = document.getElementById('countdown');
+
+    function startCooldown(seconds) {
+      btn.disabled = true;
+      let s = seconds;
+      cd.textContent = `Wait ${s}s`;
+      const t = setInterval(() => {
+        s--;
+        cd.textContent = s > 0 ? `Wait ${s}s` : '';
+        if (s <= 0) { clearInterval(t); btn.disabled = false; }
+      }, 1000);
+    }
+
+    // Start on load (prevents immediate spam after redirect)
+    startCooldown(COOLDOWN);
+
+    // Also restart after a successful POST (best-effort)
+    document.getElementById('resendForm').addEventListener('submit', () => {
+      startCooldown(COOLDOWN);
+    });
+  </script>
+</body>
+</html>

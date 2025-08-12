@@ -2,10 +2,11 @@
 # 1. Import libraries
 # -----------------------------
 
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, flash
 from openai import OpenAI
 import pymysql, wolframalpha, pymysql.cursors, os
 from twilio.rest import Client
+from twilio.base.exceptions import TwilioException
 from datetime import datetime, timedelta
 # -----------------------------
 # 2. Set API keys
@@ -220,24 +221,112 @@ def home():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        user = request.form['username']
-        pw = request.form['password']
-        phone = request.form.get('phone_e164')  # e.g. +14155551212
-        conn = get_db_connection()
-        c = conn.cursor()
+        user  = request.form['username']
+        pw    = request.form['password']
+        phone = (request.form.get('phone_e164') or "").strip() or None
+        channel = request.form.get('twofa_channel', 'sms')
+        enable_now = request.form.get('enable_2fa_now') == 'on'
+
+        conn = get_db_connection(); c = conn.cursor()
         try:
+            # store phone; do NOT set twofa_enabled yet if we will verify now
             c.execute(
                 'INSERT INTO users (username, password, phone_e164, is_phone_verified, twofa_enabled, twofa_channel) '
                 'VALUES (%s, %s, %s, %s, %s, %s)',
-                (user, pw, phone, False, False, 'sms')
+                (user, pw, phone, False, False, channel)
             )
             conn.commit()
         except:
-            return "Username already exists"
+            flash("Username already exists", "error")
+            return render_template('register.html')
         finally:
             c.close(); conn.close()
+        if enable_now and phone:
+            # start Verify and go to the setup page
+            to = f'whatsapp:{phone}' if channel == 'whatsapp' else phone
+            try:
+                twilio_client.verify.v2.services(VERIFY_SID).verifications.create(to=to, channel=channel)
+            except TwilioException as e:
+                print("[Twilio send error at register]", repr(e))
+                # Fall back to normal login, but tell user to fix phone later
+                return redirect('/login')
+
+            session['pending_setup_user'] = user
+            session['last_2fa_sent_at'] = datetime.utcnow().isoformat()
+            return redirect('/register/2fa')   # new setup page
+
         return redirect('/login')
     return render_template('register.html')
+
+
+@app.get('/register/2fa')
+def register_2fa_page():
+    if 'pending_setup_user' not in session:
+        return redirect('/login')
+    return render_template('register_2fa.html', username=session['pending_setup_user'])
+
+@app.post('/register/2fa/resend')
+def register_2fa_resend():
+    if 'pending_setup_user' not in session:
+        return "No setup in progress", 400
+
+    conn = get_db_connection(); c = conn.cursor()
+    c.execute('SELECT phone_e164, twofa_channel FROM users WHERE username=%s',
+              (session['pending_setup_user'],))
+    u = c.fetchone(); c.close(); conn.close()
+    if not u or not u['phone_e164']:
+        return "No phone on file", 400
+
+    last = session.get('last_2fa_sent_at')
+    if last and (datetime.utcnow() - datetime.fromisoformat(last)).total_seconds() < RESEND_COOLDOWN:
+        return "Please wait before requesting another code.", 429
+
+    to = f"whatsapp:{u['phone_e164']}" if (u.get('twofa_channel') or 'sms') == 'whatsapp' else u['phone_e164']
+    try:
+        twilio_client.verify.v2.services(VERIFY_SID).verifications.create(
+            to=to, channel=(u.get('twofa_channel') or 'sms')
+        )
+        session['last_2fa_sent_at'] = datetime.utcnow().isoformat()
+    except TwilioException as e:
+        print("[Twilio resend error at register]", repr(e))
+        return "Could not send code", 502
+    return "sent", 200
+
+@app.post('/register/2fa/verify')
+def register_2fa_verify():
+    if 'pending_setup_user' not in session:
+        return "No setup in progress", 400
+    code = request.form.get('code') or (request.json or {}).get('code')
+    if not code:
+        return "Missing code", 400
+
+    conn = get_db_connection(); c = conn.cursor()
+    c.execute('SELECT phone_e164, twofa_channel FROM users WHERE username=%s',
+              (session['pending_setup_user'],))
+    u = c.fetchone()
+    if not u or not u['phone_e164']:
+        c.close(); conn.close()
+        return "No phone on file", 400
+
+    to = f"whatsapp:{u['phone_e164']}" if (u.get('twofa_channel') or 'sms') == 'whatsapp' else u['phone_e164']
+    try:
+        check = twilio_client.verify.v2.services(VERIFY_SID).verification_checks.create(to=to, code=code)
+    except TwilioException as e:
+        c.close(); conn.close()
+        print("[Twilio check error at register]", repr(e))
+        return "Verification error", 502
+
+    if check.status == 'approved':
+        c.execute('UPDATE users SET is_phone_verified=1, twofa_enabled=1 WHERE username=%s',
+                  (session['pending_setup_user'],))
+        conn.commit(); c.close(); conn.close()
+        session['username'] = session['pending_setup_user']  # log them in
+        session.pop('pending_setup_user', None)
+        return redirect('/dashboard')
+
+    c.close(); conn.close()
+    return "Invalid or expired code", 401
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -588,3 +677,4 @@ def logout():
     for k in session_keys:
         session.pop(k, None)
     return redirect('/')
+
